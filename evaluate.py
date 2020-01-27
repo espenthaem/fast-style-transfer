@@ -18,6 +18,37 @@ BATCH_SIZE = 4
 DEVICE = '/gpu:0'
 
 
+def simple_evaluate(image_array, checkpoint_dir, device_t='/cpu:0'):
+    img_shape = image_array.shape
+
+    reshaped_image = image_array.reshape((1, img_shape[0], img_shape[1], img_shape[2]))
+
+    g = tf.Graph()
+    soft_config = tf.ConfigProto(allow_soft_placement=True)
+    soft_config.gpu_options.allow_growth = True
+    with g.as_default(), g.device(device_t), tf.Session(config=soft_config) as sess:
+        batch_shape = (1,) + img_shape
+        img_placeholder = tf.placeholder(tf.float32, shape=batch_shape,
+                                         name='img_placeholder')
+        preds = transform.net(img_placeholder)
+        saver = tf.train.Saver()
+
+        ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+        else:
+            raise Exception("No checkpoint found...")
+
+        _preds = sess.run(preds, feed_dict={img_placeholder: reshaped_image})
+
+    result = np.clip(_preds[0], 0, 255).astype(np.uint8)
+    # Check if shapes match and act accordingly
+    if result.shape == img_shape:
+        return result
+    else:
+        return result[0: img_shape[0], 0: img_shape[1], 0: img_shape[2]]
+
+
 def ffwd_video(path_in, path_out, checkpoint_dir, device_t='/gpu:0', batch_size=4):
     video_clip = VideoFileClip(path_in, audio=False)
     video_writer = ffmpeg_writer.FFMPEG_VideoWriter(path_out, video_clip.size, video_clip.fps, codec="libx264",
